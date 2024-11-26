@@ -12,7 +12,7 @@ enable_extension("omni.isaac.ros2_bridge")
 
 # ROS2 imports
 import rclpy
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, Float32MultiArray
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Imu, MagneticField, NavSatFix, NavSatStatus
 from geometry_msgs.msg import PoseStamped, TwistStamped, AccelStamped
@@ -163,10 +163,18 @@ class ROS2Backend(Backend):
             # Subscribe to vector of floats with the target angular velocities to control the vehicle
             # This is not ideal, but we need to reach out to NVIDIA so that they can improve the ROS2 support with custom messages
             # The current setup as it is.... its a pain!!!!
+
+            # Create subscription to drone commands
+            self.node.create_subscription(Float32MultiArray,
+                                          "/drone/actions",
+                                          self.rotor_callback,
+                                          10)
+
+            """
             self.rotor_subs = []
             for i in range(self._num_rotors):
                 self.rotor_subs.append(self.node.create_subscription(Float64, self._namespace + str(self._id) + "/control/rotor" + str(i) + "/ref", lambda x: self.rotor_callback(x, i),10))
-
+            """
 
     def send_static_transforms(self):
 
@@ -280,9 +288,18 @@ class ROS2Backend(Backend):
             self.tf_broadcaster.sendTransform(t)
         
 
-    def rotor_callback(self, ros_msg: Float64, rotor_id):
+    def rotor_callback(self, ros_msg: Float32MultiArray):
+
+        # Check for valid message format
+        if len(ros_msg.data) != self._num_rotors:
+            print("Mismatch between input data and self._num_rotors in rotor_callback")
+            print("No rotor config set")
+            return
+
         # Update the reference for the rotor of the vehicle
-        self.input_ref[rotor_id] = float(ros_msg.data)
+        for n in range(len(ros_msg.data)):
+            self.input_ref[n] = float(ros_msg.data[n])
+        #self.input_ref[rotor_id] = float(ros_msg.data)
 
     def update_sensor(self, sensor_type: str, data):
         """
